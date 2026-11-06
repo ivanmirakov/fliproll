@@ -18,44 +18,7 @@ typedef struct {
 } App;
 
 // helpers
-static void draw_circle(SDL_Renderer* renderer, int32_t cx, int32_t cy, int32_t radius) { // i stole this from the internet
-    const int32_t diameter = (radius * 2 + 2);
-
-    int32_t x = (radius - 1);
-    int32_t y = 0;
-    int32_t tx = 1;
-    int32_t ty = 1;
-    int32_t error = (tx - diameter);
-
-    while (x >= y) {
-        SDL_RenderPoint(renderer, cx + x, cy - y);
-        SDL_RenderPoint(renderer, cx + x, cy + y);
-        SDL_RenderPoint(renderer, cx - x, cy - y);
-        SDL_RenderPoint(renderer, cx - x, cy + y);
-        SDL_RenderPoint(renderer, cx + y, cy - x);
-        SDL_RenderPoint(renderer, cx + y, cy + x);
-        SDL_RenderPoint(renderer, cx - y, cy - x);
-        SDL_RenderPoint(renderer, cx - y, cy + x);
-
-        if (error <= 0) {
-            ++y;
-            error += ty;
-            ty += 2;
-        }
-
-        if (error > 0) {
-            --x;
-            tx += 2;
-            error += (tx - diameter);
-        }
-    }
-}
-
-
-// IDEA: make a brush struct that holds the small bitmap instead of recalculating it every time
-void fill_circle(SDL_Renderer *ren, int cx, int cy, int r)
-{
-    SDL_FRect rows[512];
+static void build_circle_rects(int cx, int cy, int r, SDL_FRect *rows, int *len) {
     int n = 0;
     float rr = (r + 0.5f) * (r + 0.5f);
 
@@ -66,18 +29,93 @@ void fill_circle(SDL_Renderer *ren, int cx, int cy, int r)
             (float)(2 * dx + 1), 1.0f
         };
     }
+
+    *len = n;
+}
+
+// IDEA: make a brush struct that holds the small bitmap instead of recalculating it every time
+static void fill_circle(SDL_Renderer *ren, int cx, int cy, int r)
+{
+    SDL_FRect rows[512];
+    int len;
+
+    build_circle_rects(cx, cy, r, rows, &len);
+    SDL_RenderFillRects(ren, rows, len);
+}
+
+// please bear with me. we have hardcoded brush shapes for sizes 1 to 3 and when we surpass 3 we use our handy formula.
+static void build_brush_rects(int cx, int cy, int b, SDL_FRect *rows, int *n)
+{
+    switch (b) {
+    case 1:
+        rows[0] = (SDL_FRect){ cx, cy, 1, 1 };
+        *n = 1; break;
+    case 2:
+        rows[0] = (SDL_FRect){ cx, cy,     2, 1 };
+        rows[1] = (SDL_FRect){ cx, cy + 1, 2, 1 };
+        *n = 2; break;
+    case 3:
+        rows[0] = (SDL_FRect){ cx,     cy - 1, 1, 1 };
+        rows[1] = (SDL_FRect){ cx - 1, cy,     3, 1 };
+        rows[2] = (SDL_FRect){ cx,     cy + 1, 1, 1 };
+        *n = 3; break;
+    default:
+        build_circle_rects(cx, cy, b - 2, rows, n);
+    }
+}
+
+static void fill_brush(SDL_Renderer *ren, int cx, int cy, int r) {
+    build_brush_rects(cx, cy, r);
+}
+
+// OH MY FUCKING GODDD THAT WAS SO COMPLICATED HOLY SHIT HOLY FUCK. AUGHHH JESUS.
+static void draw_brush_ring(SDL_Renderer *ren, int cx, int cy, int r, int t)
+{
+    SDL_FRect outer[512];
+    int len_outer;
+    build_brush_rects(cx, cy, r, outer, &len_outer);
+
+    // thick enough to fill the whole disc: no inner circle needed! Such a simple life...
+    if (t > r) {
+        SDL_RenderFillRects(ren, outer, len_outer);
+        return;
+    }
+
+    SDL_FRect inner[512];
+    int len_inner;
+    build_brush_rects(cx, cy, r - t, inner, &len_inner);
+
+    SDL_FRect rows[512];
+    int n = 0;
+
+    for (int i = 0; i < len_outer; i++) {
+        SDL_FRect o = outer[i];
+
+        // top and bottom rows have no inner partner
+        if (i < t || i >= len_outer - t) {
+            rows[n++] = o;
+            continue;
+        }
+
+        SDL_FRect in = inner[i - t];
+
+        rows[n++] = (SDL_FRect){
+            (float)(o.x), (float)(o.y),
+            (float)(in.x - o.x), 1.0f
+        };
+        
+        rows[n++] = (SDL_FRect){
+            (float)(in.x + in.w), (float)(o.y),
+            (float)((o.x + o.w) - (in.x + in.w)), 1.0f
+        };
+    }
+
     SDL_RenderFillRects(ren, rows, n);
 }
 
 static void debug_app_dump(const App *a) {
-    SDL_RenderDebugTextFormat(a->renderer, 0, 0,
-        "mouse_x=%.1f mouse_y=%.1f\n"
-        "prev_mouse_x=%.1f prev_mouse_y=%.1f\n"
-        "mouse_down=%d\n",
-        a->mouse_x, a->mouse_y,
-        a->prev_mouse_x, a->prev_mouse_y,
-        a->mouse_down
-    );
+    SDL_RenderDebugTextFormat(a->renderer, 0, 0, "b=%.0f",
+    a->brush_size);
 }
 
 int main(int argc, char **argv) {
@@ -118,6 +156,7 @@ int main(int argc, char **argv) {
     // clear the canvas once so it starts blank
     SDL_SetRenderTarget(app.renderer, app.canvas);
     SDL_SetRenderDrawColor(app.renderer, 255, 255, 255, 255);
+    SDL_SetRenderDrawBlendMode(app.renderer, SDL_BLENDMODE_BLEND);
     SDL_RenderClear(app.renderer);
     SDL_SetRenderTarget(app.renderer, NULL);
 
@@ -147,7 +186,7 @@ int main(int argc, char **argv) {
                 break;
             
             case SDL_EVENT_MOUSE_WHEEL:
-                app.brush_size += e.wheel.y * (1.0f + app.brush_size * 0.15f); // step scales with size
+                app.brush_size += e.wheel.y * (1.0f + app.brush_size * 0.1f); // step scales with size
                 app.brush_size = SDL_max(app.brush_size, 1.0f);
                 break;
             }
@@ -159,7 +198,7 @@ int main(int argc, char **argv) {
         if (app.mouse_down) {
             SDL_SetRenderTarget(app.renderer, app.canvas);
             SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
-            fill_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size);
+            draw_brush(app.renderer, app.mouse_x, app.mouse_y, app.brush_size);
             SDL_SetRenderTarget(app.renderer, NULL);
             SDL_Log("AAA");
         }
@@ -167,10 +206,10 @@ int main(int argc, char **argv) {
         // 3. Draw
 
         // clear
-        SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
+        SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 100);
         SDL_RenderClear(app.renderer);
         SDL_RenderTexture(app.renderer, app.canvas, NULL, NULL); // draw canvas
-        draw_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size); // draw brush circle
+        draw_brush_ring(app.renderer, app.mouse_x, app.mouse_y, app.brush_size, 1); // draw brush circle
         debug_app_dump(&app);
         SDL_RenderPresent(app.renderer);
     }

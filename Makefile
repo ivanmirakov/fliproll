@@ -7,18 +7,20 @@ OUT = fliproll
 
 ifeq ($(OS),Windows_NT)
     OUT := $(OUT).exe
+    CFLAGS  += -gcodeview
+    LDFLAGS += -Wl,--pdb=
 else
     CFLAGS  += -fsanitize=address,undefined
     LDFLAGS += -fsanitize=address,undefined
 endif
 
-$(OUT): $(SRC)
+$(OUT): $(SRC) Makefile
 	$(CC) $(CFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
 
 run: $(OUT)
 	./$(OUT)
 
 clean:
-	rm -f $(OUT)
+	rm -f $(OUT) fliproll.pdb
 
 .PHONY: run clean

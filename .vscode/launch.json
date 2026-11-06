@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug fliproll",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/fliproll.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "environment": [
+                { "name": "PATH", "value": "C:\\msys64\\clang64\\bin;${env:PATH}" }
+            ],
+            "console": "internalConsole",
+            "preLaunchTask": "build"
+        }
+    ]
+}
