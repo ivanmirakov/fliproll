@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <stdio.h>
 
 // constants
 #define WINDOW_W 720
@@ -18,6 +19,17 @@ typedef struct {
 // helpers
 static void draw_circle(App *app) {
     // TODO: implement
+}
+
+static void debug_app_dump(const App *a) {
+    SDL_RenderDebugTextFormat(a->renderer, 0, 0,
+        "mouse_x=%.1f mouse_y=%.1f\n"
+        "prev_mouse_x=%.1f prev_mouse_y=%.1f\n"
+        "mouse_down=%d\n",
+        a->mouse_x, a->mouse_y,
+        a->prev_mouse_x, a->prev_mouse_y,
+        a->mouse_down
+    );
 }
 
 int main(int argc, char **argv) {
@@ -56,16 +68,26 @@ int main(int argc, char **argv) {
         // 1. Input
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_EVENT_QUIT) running = false;
-            if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE) running = false;
-            if (e.type == SDL_EVENT_MOUSE_MOTION) {
+            switch (e.type) {
+            case SDL_EVENT_QUIT:
+                running = false;
+                break;
+            
+            case SDL_EVENT_KEY_DOWN:
+                if (e.key.key == SDLK_ESCAPE) running = false;
+                break;
+
+            case SDL_EVENT_MOUSE_MOTION:
                 app.prev_mouse_x = app.mouse_x;
                 app.prev_mouse_y = app.mouse_y;
                 app.mouse_x = e.motion.x;
                 app.mouse_y = e.motion.y;
-            }
-            if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
+                break;
+            
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
                 app.mouse_down = e.button.down;
+                break;
             }
         }
 
@@ -77,6 +99,7 @@ int main(int argc, char **argv) {
         SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
         SDL_RenderClear(app.renderer);
         SDL_RenderTexture(app.renderer, app.canvas, NULL, NULL);
+        debug_app_dump(&app);
         SDL_RenderPresent(app.renderer);
     }
 
