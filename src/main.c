@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 // constants
-#define WINDOW_W 720
-#define WINDOW_H 720
+#define WINDOW_W 120
+#define WINDOW_H 120
 
 // state
 typedef struct {
@@ -13,12 +13,42 @@ typedef struct {
     SDL_Texture *canvas;
     float mouse_x, mouse_y;
     float prev_mouse_x, prev_mouse_y; // we will need this for drawing
+    float brush_size;
     bool mouse_down;
 } App;
 
 // helpers
-static void draw_circle(App *app) {
-    // TODO: implement
+static void draw_circle(SDL_Renderer* renderer, int32_t centreX, int32_t centreY, int32_t radius) { // i stole this from the internet
+    const int32_t diameter = (radius * 2);
+
+    int32_t x = (radius - 1);
+    int32_t y = 0;
+    int32_t tx = 1;
+    int32_t ty = 1;
+    int32_t error = (tx - diameter);
+
+    while (x >= y) {
+        SDL_RenderPoint(renderer, centreX + x, centreY - y);
+        SDL_RenderPoint(renderer, centreX + x, centreY + y);
+        SDL_RenderPoint(renderer, centreX - x, centreY - y);
+        SDL_RenderPoint(renderer, centreX - x, centreY + y);
+        SDL_RenderPoint(renderer, centreX + y, centreY - x);
+        SDL_RenderPoint(renderer, centreX + y, centreY + x);
+        SDL_RenderPoint(renderer, centreX - y, centreY - x);
+        SDL_RenderPoint(renderer, centreX - y, centreY + x);
+
+        if (error <= 0) {
+            ++y;
+            error += ty;
+            ty += 2;
+        }
+
+        if (error > 0) {
+            --x;
+            tx += 2;
+            error += (tx - diameter);
+        }
+    }
 }
 
 static void debug_app_dump(const App *a) {
@@ -43,10 +73,18 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!SDL_CreateWindowAndRenderer("Fliproll", WINDOW_W, WINDOW_H, 0, &app.window, &app.renderer)) {
+    if (!SDL_CreateWindowAndRenderer("Fliproll",
+        WINDOW_W, WINDOW_H,
+        SDL_WINDOW_RESIZABLE,
+        &app.window, &app.renderer)
+    ) {
         SDL_Log("Window failed: %s", SDL_GetError());
         return 1;
     }
+
+    SDL_SetRenderLogicalPresentation(app.renderer, WINDOW_W, WINDOW_H,
+    SDL_LOGICAL_PRESENTATION_LETTERBOX);
+
     SDL_SetRenderVSync(app.renderer, 1);
 
     app.canvas = SDL_CreateTexture(app.renderer, SDL_PIXELFORMAT_RGBA8888,
@@ -80,15 +118,20 @@ int main(int argc, char **argv) {
             case SDL_EVENT_MOUSE_MOTION:
                 app.prev_mouse_x = app.mouse_x;
                 app.prev_mouse_y = app.mouse_y;
-                app.mouse_x = e.motion.x;
-                app.mouse_y = e.motion.y;
+                SDL_RenderCoordinatesFromWindow(app.renderer, e.motion.x, e.motion.y, &app.mouse_x, &app.mouse_y);
                 break;
             
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP:
                 app.mouse_down = e.button.down;
                 break;
+            
+            case SDL_EVENT_MOUSE_WHEEL:
+                app.brush_size += e.wheel.y * (1.0f + app.brush_size * 0.15f); // step scales with size
+                app.brush_size = SDL_max(app.brush_size, 1.0f);
+                break;
             }
+
         }
 
         // 2. Update
@@ -99,6 +142,7 @@ int main(int argc, char **argv) {
         SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
         SDL_RenderClear(app.renderer);
         SDL_RenderTexture(app.renderer, app.canvas, NULL, NULL);
+        draw_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size);
         debug_app_dump(&app);
         SDL_RenderPresent(app.renderer);
     }

@@ -14,7 +14,7 @@
 - [X] Clear background
 
 ## Canvas
-- [ ] Draw circle that follows the mouse
+- [X] Draw circle that follows the mouse
 - [ ] Paint dots that stay while mouse is held: Draw into an offscreen texture (RenderTexture or SDL_Texture target), then draw that texture every frame.
 - [ ] Connect dots with lines to close the gaps
 - [ ] Change brush size with scroll wheel
