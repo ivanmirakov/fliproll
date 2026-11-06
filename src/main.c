@@ -1,6 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <stdio.h>
+#include <math.h>
 
 // constants
 #define WINDOW_W 120
@@ -18,8 +18,8 @@ typedef struct {
 } App;
 
 // helpers
-static void draw_circle(SDL_Renderer* renderer, int32_t centreX, int32_t centreY, int32_t radius) { // i stole this from the internet
-    const int32_t diameter = (radius * 2);
+static void draw_circle(SDL_Renderer* renderer, int32_t cx, int32_t cy, int32_t radius) { // i stole this from the internet
+    const int32_t diameter = (radius * 2 + 2);
 
     int32_t x = (radius - 1);
     int32_t y = 0;
@@ -28,14 +28,14 @@ static void draw_circle(SDL_Renderer* renderer, int32_t centreX, int32_t centreY
     int32_t error = (tx - diameter);
 
     while (x >= y) {
-        SDL_RenderPoint(renderer, centreX + x, centreY - y);
-        SDL_RenderPoint(renderer, centreX + x, centreY + y);
-        SDL_RenderPoint(renderer, centreX - x, centreY - y);
-        SDL_RenderPoint(renderer, centreX - x, centreY + y);
-        SDL_RenderPoint(renderer, centreX + y, centreY - x);
-        SDL_RenderPoint(renderer, centreX + y, centreY + x);
-        SDL_RenderPoint(renderer, centreX - y, centreY - x);
-        SDL_RenderPoint(renderer, centreX - y, centreY + x);
+        SDL_RenderPoint(renderer, cx + x, cy - y);
+        SDL_RenderPoint(renderer, cx + x, cy + y);
+        SDL_RenderPoint(renderer, cx - x, cy - y);
+        SDL_RenderPoint(renderer, cx - x, cy + y);
+        SDL_RenderPoint(renderer, cx + y, cy - x);
+        SDL_RenderPoint(renderer, cx + y, cy + x);
+        SDL_RenderPoint(renderer, cx - y, cy - x);
+        SDL_RenderPoint(renderer, cx - y, cy + x);
 
         if (error <= 0) {
             ++y;
@@ -49,6 +49,24 @@ static void draw_circle(SDL_Renderer* renderer, int32_t centreX, int32_t centreY
             error += (tx - diameter);
         }
     }
+}
+
+
+// IDEA: make a brush struct that holds the small bitmap instead of recalculating it every time
+void fill_circle(SDL_Renderer *ren, int cx, int cy, int r)
+{
+    SDL_FRect rows[512];
+    int n = 0;
+    float rr = (r + 0.5f) * (r + 0.5f);
+
+    for (int dy = -r; dy <= r && n < 512; dy++) {
+        int dx = (int)sqrtf(rr - (float)(dy * dy));
+        rows[n++] = (SDL_FRect){
+            (float)(cx - dx), (float)(cy + dy),
+            (float)(2 * dx + 1), 1.0f
+        };
+    }
+    SDL_RenderFillRects(ren, rows, n);
 }
 
 static void debug_app_dump(const App *a) {
@@ -66,6 +84,7 @@ int main(int argc, char **argv) {
     (void)argc; (void)argv; // to shut up the compiler
 
     App app = {0};
+    app.brush_size = 2;
 
     // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -89,11 +108,12 @@ int main(int argc, char **argv) {
 
     app.canvas = SDL_CreateTexture(app.renderer, SDL_PIXELFORMAT_RGBA8888,
                                    SDL_TEXTUREACCESS_TARGET, WINDOW_W, WINDOW_H);
-    
     if (!app.canvas) {
         SDL_Log("Canvas failed: %s", SDL_GetError());
         return 1;
     }
+
+    SDL_SetTextureScaleMode(app.canvas, SDL_SCALEMODE_PIXELART);
 
     // clear the canvas once so it starts blank
     SDL_SetRenderTarget(app.renderer, app.canvas);
@@ -136,13 +156,21 @@ int main(int argc, char **argv) {
 
         // 2. Update
 
-        // ...
+        if (app.mouse_down) {
+            SDL_SetRenderTarget(app.renderer, app.canvas);
+            SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
+            fill_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size);
+            SDL_SetRenderTarget(app.renderer, NULL);
+            SDL_Log("AAA");
+        }
 
         // 3. Draw
+
+        // clear
         SDL_SetRenderDrawColor(app.renderer, 30, 30, 40, 255);
         SDL_RenderClear(app.renderer);
-        SDL_RenderTexture(app.renderer, app.canvas, NULL, NULL);
-        draw_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size);
+        SDL_RenderTexture(app.renderer, app.canvas, NULL, NULL); // draw canvas
+        draw_circle(app.renderer, app.mouse_x, app.mouse_y, app.brush_size); // draw brush circle
         debug_app_dump(&app);
         SDL_RenderPresent(app.renderer);
     }

@@ -1,0 +1,9 @@
+{
+    "makefile.launchConfigurations": [
+        {
+            "cwd": "c:\\Users\\Alumno\\Downloads\\fliproll",
+            "binaryPath": "c:\\Users\\Alumno\\Downloads\\fliproll\\fliproll.exe",
+            "binaryArgs": []
+        }
+    ]
+}
